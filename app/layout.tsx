@@ -1,7 +1,22 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import { CampusProvider } from '@/mobile/lib/CampusContext';
 
+function RootLayoutNav() {
+  const colorScheme = useColorScheme();
+
+  return (
+    <CampusProvider>
+      <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+        <Stack>
+          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+          <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
+        </Stack>
+      </ThemeProvider>
+    </CampusProvider>
+  );
+}
 const geistSans = Geist({
   variable: "--font-geist-sans",
   subsets: ["latin"],
