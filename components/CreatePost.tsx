@@ -10,9 +10,10 @@ export default function CreatePost() {
     const[error, setError] =useState('');
     const [selectedCampus, setSelectedCampus] = useState("");
     const [image,setImage] = useState<File |null>(null);
+    const [dateLostFound, setDateLostFound] = useState('');
   
 
-    // We'll add our post-creation logic here.
+   
     const newPost ={
         title,
         description,
@@ -40,7 +41,7 @@ export default function CreatePost() {
   return (
     <div className='flex flex-col min-h-screen w-full items-center justify-center p-5 bg-orange-200'>
         {/*Header */}
-        <div className='flex flex-col p-5 text-center bg-white rounded-xl mb-5'>
+        <div className='flex flex-col p-5 text-center bg-white rounded-xl mb-5 text-black'>
             <h1 className='font-extrabold text-3xl p-2'>Let's Bring Lost Items Home</h1>
             <p className='font-extralight'>Every post makes a difference. Whether you've lost something important or found something that belongs to someone else, share it with the community!</p>
         </div>
@@ -101,6 +102,19 @@ export default function CreatePost() {
                             <option value='found'>Found</option>
                         
                         </select>
+                        <label htmlFor='dateLostFound'
+                        className="mb-2 block text-sm font-medium text-gray-700">
+                            Date lost/found
+                        </label>
+                        <input 
+                        id='dateLostFound'
+                        type='date'
+                        value ={dateLostFound}
+                        onChange={(event)=> setDateLostFound(event.target.value)}
+                        required
+                        className='w-full rounded-xl border border-gray-300 p-3'/>
+
+                        
                         <CampusSelector onCampusChange={setSelectedCampus} />
 
                     </div>
