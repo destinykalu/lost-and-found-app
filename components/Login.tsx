@@ -39,10 +39,15 @@ export default function Login() {
                <CampusSelector onCampusChange={setSelectedCampus} />
 
                 <button
-                type="button"
-                onClick={() => router.push("/homepage")}
                 className="w-full rounded-full bg-[#ff914d] px-4 py-3 font-semibold text-white transition hover:bg-orange-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2"
-                >
+                type="button"
+                onClick={() => {
+                    if(!selectedCampus){
+                        alert("Please select your campus first.");
+                        return;
+                    }
+
+                    router.push("/homepage")}}>
                 Continue
                 </button>
 
