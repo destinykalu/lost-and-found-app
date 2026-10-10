@@ -4,6 +4,10 @@ import Sidebar from '@/components/Sidebar';
 
 export default function page() {
   return (
-   <Sidebar />
+    <div className='min-h-screen border-2 border-black
+    max-w-[1400px]  mx-auto'>  
+      <Sidebar />
+    </div>
+ 
   )
 }
