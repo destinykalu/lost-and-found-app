@@ -10,10 +10,19 @@
 !.yarn/releases
 !.yarn/versions
 
+# mobile / expo / native builds
+.expo/
+dist/
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+
 # testing
 /coverage
 
-# next.js
+# next.js / web builds
 /.next/
 /out/
 
@@ -25,13 +34,14 @@
 *.pem
 
 # debug
-npm-debug.log*
+npm-debug.*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.example
 
 # vercel
 .vercel
