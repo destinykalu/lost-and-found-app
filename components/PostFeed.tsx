@@ -8,8 +8,8 @@ export default function PostFeed() {
     const[query, setQuery] = useState('');
     const router = useRouter();
   return (
-    <div className='flex-grow border-2 border-black'>
-        <div className=''>
+    <div className='flex-grow border-2 border-black bg-white'>
+        <div className='bg-white'>
             <h1>FoundU</h1>
             <SearchBar query={query} onQueryChange={setQuery}></SearchBar>
           
