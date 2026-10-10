@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import type { ChangeEvent } from "react";
 
 const campuses = [
   "Georgia Institute of Technology",
@@ -20,7 +21,7 @@ export default function CampusSelector({
 }: CampusSelectorProps) {
   const [selectedCampus, setSelectedCampus] = useState("");
 
-  function handleCampusChange(event: React.ChangeEvent<HTMLSelectElement>) {
+  function handleCampusChange(event: ChangeEvent<HTMLSelectElement>) {
     const campus = event.target.value;
     setSelectedCampus(campus);
     onCampusChange(campus);
@@ -43,7 +44,6 @@ export default function CampusSelector({
         className="w-full rounded-lg border border-gray-300 bg-white p-3 text-gray-700 outline-none focus:border-pink-500 focus:ring-2 focus:ring-pink-200"
       >
         <option value="">Choose your campus</option>
-
         {campuses.map((campus) => (
           <option key={campus} value={campus}>
             {campus}
