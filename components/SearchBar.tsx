@@ -12,12 +12,13 @@ export default function SearchBar({
     onQueryChange,
 }: SearchBarProps) {
   return (
-    <div>
+    <div className='w-full'>
         <h1>Find Your Item</h1>
         <input type='search'
         value={query}
         onChange={(event) => onQueryChange(event.target.value)}
-        placeholder='Search items, descriptions, or locations...' />
+        placeholder='Search items, locations, descriptions' 
+        className='w-full border-1 rounded-2xl p-1 border-gray-300'/>
 
         {query && (
         <button type='button' onClick={() => onQueryChange("")}>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 const campuses = [
   "Georgia Institute of Technology",
@@ -9,6 +9,10 @@ const campuses = [
   "Kennesaw State University",
   "Emory University",
   "Georgia Southern University",
+  "Savannah State University",
+  "Spelman College",
+  "Clark Atlanta University",
+  "Morehouse College",
 ];
 
 type CampusSelectorProps = {
@@ -20,9 +24,28 @@ export default function CampusSelector({
 }: CampusSelectorProps) {
   const [selectedCampus, setSelectedCampus] = useState("");
 
-  function handleCampusChange(event: React.ChangeEvent<HTMLSelectElement>) {
+  useEffect(() => {
+    const savedCampus = localStorage.getItem("foundu-campus");
+
+    if (savedCampus && campuses.includes(savedCampus)) {
+      setSelectedCampus(savedCampus);
+      onCampusChange(savedCampus);
+    }
+  }, [onCampusChange]);
+
+  function handleCampusChange(
+    event: React.ChangeEvent<HTMLSelectElement>
+  ) {
     const campus = event.target.value;
+
     setSelectedCampus(campus);
+
+    if (campus) {
+      localStorage.setItem("foundu-campus", campus);
+    } else {
+      localStorage.removeItem("foundu-campus");
+    }
+
     onCampusChange(campus);
   }
 
@@ -32,17 +55,16 @@ export default function CampusSelector({
         htmlFor="campus"
         className="mb-2 block text-sm font-medium text-gray-700"
       >
-        Select your campus
+        Filter by campus
       </label>
 
       <select
         id="campus"
         value={selectedCampus}
         onChange={handleCampusChange}
-        required
         className="w-full rounded-lg border border-gray-300 bg-white p-3 text-gray-700 outline-none focus:border-pink-500 focus:ring-2 focus:ring-pink-200"
       >
-        <option value="">Choose your campus</option>
+        <option value="">All campuses</option>
 
         {campuses.map((campus) => (
           <option key={campus} value={campus}>

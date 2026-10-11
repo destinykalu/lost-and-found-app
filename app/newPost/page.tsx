@@ -1,13 +1,14 @@
-import CreatePost from '@/components/CreatePost'
-import Sidebar from '@/components/Sidebar'
-import React from 'react'
+import CreatePost from "@/components/CreatePost";
+import Sidebar from "@/components/Sidebar";
+import React from "react";
 
-export default function page() {
+export default function Page() {
   return (
-    <div className='min-h-screen border-2 border-white 
-    max-w-[1400px] w-full mx-auto flex'>
-        <Sidebar />
+    <div className="flex min-h-screen w-full">
+      <Sidebar />
+      <main className="min-w-0 flex-1">
         <CreatePost />
+      </main>
     </div>
-  )
+  );
 }
