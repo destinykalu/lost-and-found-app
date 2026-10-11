@@ -62,7 +62,7 @@ interface MeetupProposal {
   searchAttempts: number;
 }
 
-type ActionType = "Unverify" | "Block" | "Report";
+type ActionType = "Approve Verification" | "Unverify" | "Block" | "Report";
 type ModerationAction = "unverify" | "block" | "report";
 
 function formatTime(value: string) {
@@ -130,6 +130,10 @@ export default function ItemChatView({
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Role Checks
+  const isClaimant = currentUserId === chat?.claimant_id;
+  const isFinder = currentUserId === chat?.finder_id;
 
   const loadMessages = useCallback(
     async (activeChatId: string, userId: string) => {
@@ -260,15 +264,11 @@ export default function ItemChatView({
         ]);
       } catch (loadError: any) {
         console.error("Could not load chat - Full error:", loadError);
-        console.error("Detailed JSON:", JSON.stringify(loadError, null, 2));
-
-        if (!cancelled) {
-          setError(
-            loadError?.message ||
-            (typeof loadError === "object" && loadError !== null ? JSON.stringify(loadError) : null) ||
-            "Could not load this conversation."
-          );
-        }
+        setError(
+          loadError?.message ||
+          (typeof loadError === "object" && loadError !== null ? JSON.stringify(loadError) : null) ||
+          "Could not load this conversation."
+        );
       } finally {
         if (!cancelled) setLoaded(true);
       }
@@ -369,10 +369,7 @@ export default function ItemChatView({
       const row = data as DbMessage;
 
       setMessages((current) => {
-        if (current.some((message) => message.id === row.id)) {
-          return current;
-        }
-
+        if (current.some((message) => message.id === row.id)) return current;
         return [
           ...current,
           {
@@ -387,25 +384,14 @@ export default function ItemChatView({
       setDraft("");
     } catch (sendError: any) {
       console.error("Could not send message - Full error:", sendError);
-      console.error("Detailed JSON:", JSON.stringify(sendError, null, 2));
-
-      setError(
-        sendError?.message ||
-        (typeof sendError === "object" && sendError !== null ? JSON.stringify(sendError) : null) ||
-        "Could not send your message."
-      );
+      setError(sendError?.message || "Could not send your message.");
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const logAction = async (
-    action: ModerationAction,
-    reason?: string
-  ) => {
-    if (!chat) {
-      throw new Error("Conversation not found.");
-    }
+  const logAction = async (action: ModerationAction, reason?: string) => {
+    if (!chat) throw new Error("Conversation not found.");
 
     const { error: insertError } = await supabase
       .from("chat_moderation")
@@ -422,63 +408,69 @@ export default function ItemChatView({
   const confirmAction = async () => {
     if (!confirmation || isSubmitting) return;
 
-    const action = confirmation;
-    const actionMap: Record<ActionType, ModerationAction> = {
-      Unverify: "unverify",
-      Block: "block",
-      Report: "report",
-    };
-
     setIsSubmitting(true);
     setError("");
     setNotice("");
 
     try {
-      await logAction(actionMap[action]);
-
-      if (action === "Unverify") {
-        if (!chat) throw new Error("Conversation not found.");
-
+      if (confirmation === "Approve Verification") {
         const { data, error: updateError } = await supabase
           .from("chats")
-          .update({ is_verified: false })
-          .eq("id", chat.id)
-          .select(
-            "id, item_id, finder_id, claimant_id, status, is_verified"
-          )
+          .update({ is_verified: true })
+          .eq("id", chat!.id)
+          .select("id, item_id, finder_id, claimant_id, status, is_verified")
           .single();
 
         if (updateError) throw updateError;
+        setChat(data as ChatRecord);
+        setVerified(true);
+        setNotice("User has been verified. Meetups are now unlocked!");
+        
+      } else if (confirmation === "Unverify") {
+        await logAction("unverify");
+        const { data, error: updateError } = await supabase
+          .from("chats")
+          .update({ is_verified: false })
+          .eq("id", chat!.id)
+          .select("id, item_id, finder_id, claimant_id, status, is_verified")
+          .single();
 
+        if (updateError) throw updateError;
         setChat(data as ChatRecord);
         setVerified(false);
-        setNotice("Verification removed successfully.");
-      } else if (action === "Block") {
-        setNotice(
-          "Block action recorded. Blocking must also be enforced by your backend."
-        );
-      } else {
+        setNotice("Verification removed.");
+
+      } else if (confirmation === "Block") {
+        await logAction("block");
+        
+        // 🚨 Delete the chat completely to remove access
+        const { error: deleteError } = await supabase
+          .from("chats")
+          .delete()
+          .eq("id", chat!.id);
+
+        if (deleteError) throw deleteError;
+
+        setNotice("User blocked and chat deleted.");
+        router.push("/homepage"); 
+        return; // Stop execution here so the UI doesn't crash trying to render a deleted chat
+        
+      } else if (confirmation === "Report") {
+        await logAction("report");
         setNotice("Report submitted successfully.");
       }
 
       setConfirmation(null);
       setDrawerOpen(false);
-
-      if (action === "Block" || action === "Report") {
-        router.push("/homepage");
-      }
-    } catch (actionError) {
-      console.error("Moderation action failed:", actionError);
-      setError(
-        actionError instanceof Error
-          ? actionError.message
-          : "Could not save this moderation action."
-      );
+    } catch (actionError: any) {
+      console.error("Action failed:", JSON.stringify(actionError, null, 2));
+      setError(actionError?.message || "Could not complete this action.");
     } finally {
       setIsSubmitting(false);
     }
   };
 
+  // Submitting verification answers now sends a chat message instead of updating DB instantly
   const submitVerification = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -491,40 +483,47 @@ export default function ItemChatView({
       return;
     }
 
-    if (!chat) {
-      setError("Conversation not found.");
-      return;
-    }
+    if (!chat || !currentUserId) return;
 
     setIsSubmitting(true);
     setError("");
     setNotice("");
 
     try {
-      const { data, error: updateError } = await supabase
-        .from("chats")
-        .update({ is_verified: true })
-        .eq("id", chat.id)
-        .select(
-          "id, item_id, finder_id, claimant_id, status, is_verified"
-        )
+      const content = `*** VERIFICATION REQUEST ***\n\nDescription: ${answers.itemDescription}\nDetails: ${answers.identifyingDetails}\nProof: ${answers.proofOfOwnership}`;
+
+      const { data, error: insertError } = await supabase
+        .from("messages")
+        .insert({
+          chat_id: chat.id,
+          sender_id: currentUserId,
+          content,
+        })
+        .select("id, chat_id, sender_id, content, created_at")
         .single();
 
-      if (updateError) throw updateError;
+      if (insertError) throw insertError;
 
-      setChat(data as ChatRecord);
-      setVerified(true);
+      const row = data as DbMessage;
+      setMessages((current) => {
+        if (current.some((message) => message.id === row.id)) return current;
+        return [
+          ...current,
+          {
+            id: row.id,
+            sender: "me",
+            text: row.content,
+            time: formatTime(row.created_at),
+          },
+        ];
+      });
+
       setVerificationOpen(false);
-      setNotice(
-        "Verification status updated. The answers have not been saved."
-      );
-    } catch (verificationError) {
-      console.error("Verification failed:", verificationError);
-      setError(
-        verificationError instanceof Error
-          ? verificationError.message
-          : "Could not update verification."
-      );
+      setNotice("Verification answers sent to the finder for review!");
+      setAnswers({ itemDescription: "", identifyingDetails: "", proofOfOwnership: "" });
+    } catch (err: any) {
+      console.error("Verification failed:", JSON.stringify(err, null, 2));
+      setError(err?.message || "Could not send verification answers.");
     } finally {
       setIsSubmitting(false);
     }
@@ -596,7 +595,6 @@ export default function ItemChatView({
       setNotice("Meetup proposal saved.");
     } catch (meetupError: any) {
       console.error("Real Error:", JSON.stringify(meetupError, null, 2));
-
       setError(
         meetupError?.message ||
         (typeof meetupError === "object" && meetupError !== null 
@@ -630,13 +628,9 @@ export default function ItemChatView({
 
       setMeetup(mapMeetup(data as DbMeetup, currentUserId));
       setNotice(response === "approved" ? "Meetup approved." : "Meetup denied.");
-    } catch (responseError) {
-      console.error("Could not respond to meetup:", responseError);
-      setError(
-        responseError instanceof Error
-          ? responseError.message
-          : "Could not update the meetup."
-      );
+    } catch (responseError: any) {
+      console.error("Could not respond to meetup:", JSON.stringify(responseError, null, 2));
+      setError(responseError?.message || "Could not update the meetup.");
     } finally {
       setIsSubmitting(false);
     }
@@ -711,13 +705,9 @@ export default function ItemChatView({
           ? "Search attempt 3 of 3 used. Maximum attempts reached."
           : `Item not received. Search again (${nextAttempts}/3 attempts used).`
       );
-    } catch (resolveError) {
-      console.error("Could not update item status:", resolveError);
-      setError(
-        resolveError instanceof Error
-          ? resolveError.message
-          : "Could not update the item."
-      );
+    } catch (resolveError: any) {
+      console.error("Could not update item status:", JSON.stringify(resolveError, null, 2));
+      setError(resolveError?.message || "Could not update the item.");
     } finally {
       setIsSubmitting(false);
     }
@@ -834,100 +824,111 @@ export default function ItemChatView({
           </div>
         </article>
 
-        <section className="mt-5 rounded-xl border border-orange-200 bg-orange-100 p-4 shadow-sm">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <h2 className="font-bold text-orange-950">📍 Meetup Details</h2>
+        {verified ? (
+          <section className="mt-5 rounded-xl border border-orange-200 bg-orange-100 p-4 shadow-sm">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h2 className="font-bold text-orange-950">📍 Meetup Details</h2>
 
-              {meetup?.time && meetup?.location ? (
-                <>
-                  <p className="mt-2 text-sm text-orange-900">
-                    <strong>Time:</strong>{" "}
-                    {new Date(meetup.time).toLocaleString()}
+                {meetup?.time && meetup?.location ? (
+                  <>
+                    <p className="mt-2 text-sm text-orange-900">
+                      <strong>Time:</strong>{" "}
+                      {new Date(meetup.time).toLocaleString()}
+                    </p>
+                    <p className="mt-1 text-sm text-orange-900">
+                      <strong>Location:</strong> {meetup.location}
+                    </p>
+                    <p className="mt-1 text-xs font-semibold uppercase text-orange-800">
+                      Status: {meetup.status}
+                    </p>
+                    <p className="mt-1 text-xs text-orange-800">
+                      Proposed by:{" "}
+                      {meetup.proposedBy === "me" ? "You" : "Other user"}
+                    </p>
+                  </>
+                ) : (
+                  <p className="mt-1 text-sm text-orange-800">
+                    No meetup has been proposed yet.
                   </p>
-                  <p className="mt-1 text-sm text-orange-900">
-                    <strong>Location:</strong> {meetup.location}
-                  </p>
-                  <p className="mt-1 text-xs font-semibold uppercase text-orange-800">
-                    Status: {meetup.status}
-                  </p>
-                  <p className="mt-1 text-xs text-orange-800">
-                    Proposed by:{" "}
-                    {meetup.proposedBy === "me" ? "You" : "Other user"}
-                  </p>
-                </>
-              ) : (
-                <p className="mt-1 text-sm text-orange-800">
-                  No meetup has been proposed yet.
-                </p>
-              )}
-            </div>
+                )}
+              </div>
 
-            <button
-              type="button"
-              disabled={
-                isSubmitting ||
-                (meetup?.status === "proposed" &&
-                  meetup.proposedBy === "me")
-              }
-              onClick={() => {
-                setMeetupTime("");
-                setMeetupLocation("");
-                setMeetupOpen(true);
-              }}
-              className="rounded-full bg-orange-500 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              Propose / Update
-            </button>
-          </div>
-
-          {meetup?.status === "proposed" && meetup.proposedBy === "me" && (
-            <p className="mt-3 text-xs text-orange-800">
-              Your proposal is waiting for the other user to respond.
-            </p>
-          )}
-
-          {meetup?.status === "proposed" && meetup.proposedBy === "them" && (
-            <div className="mt-4 flex gap-2">
               <button
                 type="button"
-                disabled={isSubmitting}
-                onClick={() => void respondToMeetup("approved")}
-                className="rounded-full bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-50"
+                disabled={
+                  isSubmitting ||
+                  (meetup?.status === "proposed" &&
+                    meetup.proposedBy === "me")
+                }
+                onClick={() => {
+                  setMeetupTime("");
+                  setMeetupLocation("");
+                  setMeetupOpen(true);
+                }}
+                className="rounded-full bg-orange-500 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                Approved
-              </button>
-              <button
-                type="button"
-                disabled={isSubmitting}
-                onClick={() => void respondToMeetup("denied")}
-                className="rounded-full bg-white px-4 py-2 text-sm font-semibold text-rose-700 ring-1 ring-rose-200 hover:bg-rose-50 disabled:opacity-50"
-              >
-                Denied
+                Propose / Update
               </button>
             </div>
-          )}
 
-          {meetup?.status === "approved" && meetup.itemReceived !== true && (
-            <button
-              type="button"
-              onClick={() => setReceivedOpen(true)}
-              className="mt-4 rounded-full bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700"
-            >
-              Item Received?
-            </button>
-          )}
+            {meetup?.status === "proposed" && meetup.proposedBy === "me" && (
+              <p className="mt-3 text-xs text-orange-800">
+                Your proposal is waiting for the other user to respond.
+              </p>
+            )}
 
-          <p className="mt-3 text-xs text-orange-900">
-            Search attempts used: {searchAttempts}/3
-          </p>
+            {meetup?.status === "proposed" && meetup.proposedBy === "them" && (
+              <div className="mt-4 flex gap-2">
+                <button
+                  type="button"
+                  disabled={isSubmitting}
+                  onClick={() => void respondToMeetup("approved")}
+                  className="rounded-full bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-50"
+                >
+                  Approved
+                </button>
+                <button
+                  type="button"
+                  disabled={isSubmitting}
+                  onClick={() => void respondToMeetup("denied")}
+                  className="rounded-full bg-white px-4 py-2 text-sm font-semibold text-rose-700 ring-1 ring-rose-200 hover:bg-rose-50 disabled:opacity-50"
+                >
+                  Denied
+                </button>
+              </div>
+            )}
 
-          {searchAttempts >= 3 && (
-            <p className="mt-1 text-sm font-semibold text-red-700">
-              Maximum search attempts reached.
+            {meetup?.status === "approved" && meetup.itemReceived !== true && (
+              <button
+                type="button"
+                onClick={() => setReceivedOpen(true)}
+                className="mt-4 rounded-full bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700"
+              >
+                Item Received?
+              </button>
+            )}
+
+            <p className="mt-3 text-xs text-orange-900">
+              Search attempts used: {searchAttempts}/3
             </p>
-          )}
-        </section>
+
+            {searchAttempts >= 3 && (
+              <p className="mt-1 text-sm font-semibold text-red-700">
+                Maximum search attempts reached.
+              </p>
+            )}
+          </section>
+        ) : (
+          <section className="mt-5 rounded-xl border border-gray-200 bg-gray-50 p-6 shadow-sm text-center">
+            <h2 className="font-bold text-gray-800">📍 Meetups Locked</h2>
+            <p className="mt-2 text-sm text-gray-600">
+              {isFinder 
+                ? "You must approve the claimant's verification before scheduling a meetup." 
+                : "You must submit verification answers and wait for the finder to approve them to unlock meetups."}
+            </p>
+          </section>
+        )}
 
         <section className="mt-5 overflow-hidden rounded-xl border border-rose-100 bg-white shadow-md">
           <header className="flex items-center gap-3 border-b border-rose-100 bg-gradient-to-r from-pink-100 to-rose-100 px-5 py-4">
@@ -1037,45 +1038,69 @@ export default function ItemChatView({
             </p>
 
             <div className="mt-6 flex flex-col gap-3">
+              {!verified && isClaimant && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDrawerOpen(false);
+                    setVerificationOpen(true);
+                  }}
+                  className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-left font-semibold text-blue-800 hover:bg-blue-100"
+                >
+                  ✓ Get Verified
+                  <span className="mt-1 block text-xs font-normal">
+                    Submit answers to the finder to prove this item is yours.
+                  </span>
+                </button>
+              )}
+
+              {!verified && isFinder && (
+                <button
+                  type="button"
+                  onClick={() => setConfirmation("Approve Verification")}
+                  className="rounded-xl border border-green-200 bg-green-50 p-4 text-left font-semibold text-green-800 hover:bg-green-100"
+                >
+                  ✓ Approve Verification
+                  <span className="mt-1 block text-xs font-normal">
+                    Mark this user as verified to unlock meetups.
+                  </span>
+                </button>
+              )}
+
+              {verified && isFinder && (
+                <button
+                  type="button"
+                  onClick={() => setConfirmation("Unverify")}
+                  className="rounded-xl border border-orange-200 bg-orange-50 p-4 text-left font-semibold text-orange-800 hover:bg-orange-100"
+                >
+                  Unverify
+                  <span className="mt-1 block text-xs font-normal">
+                    Remove the verified status.
+                  </span>
+                </button>
+              )}
+
               <button
                 type="button"
-                onClick={() => {
-                  setDrawerOpen(false);
-                  setVerificationOpen(true);
-                }}
-                className="rounded-xl border border-green-200 bg-green-50 p-4 text-left font-semibold text-green-800 hover:bg-green-100"
+                onClick={() => setConfirmation("Block")}
+                className="rounded-xl border border-gray-200 bg-gray-50 p-4 text-left font-semibold text-gray-800 hover:bg-gray-100"
               >
-                ✓ Verify
+                Block
                 <span className="mt-1 block text-xs font-normal">
-                  Answer questions about item ownership.
+                  Record a block action against this user.
                 </span>
               </button>
 
-              {(["Unverify", "Block", "Report"] as ActionType[]).map(
-                (action) => (
-                  <button
-                    key={action}
-                    type="button"
-                    onClick={() => setConfirmation(action)}
-                    className={`rounded-xl border p-4 text-left font-semibold ${
-                      action === "Unverify"
-                        ? "border-orange-200 bg-orange-50 text-orange-800 hover:bg-orange-100"
-                        : action === "Block"
-                        ? "border-gray-200 bg-gray-50 text-gray-800 hover:bg-gray-100"
-                        : "border-red-200 bg-red-50 text-red-800 hover:bg-red-100"
-                    }`}
-                  >
-                    {action}
-                    <span className="mt-1 block text-xs font-normal">
-                      {action === "Unverify"
-                        ? "Remove the verified status."
-                        : action === "Block"
-                        ? "Record a block action."
-                        : "Submit a report about this chat."}
-                    </span>
-                  </button>
-                )
-              )}
+              <button
+                type="button"
+                onClick={() => setConfirmation("Report")}
+                className="rounded-xl border border-red-200 bg-red-50 p-4 text-left font-semibold text-red-800 hover:bg-red-100"
+              >
+                Report
+                <span className="mt-1 block text-xs font-normal">
+                  Submit a report about this chat.
+                </span>
+              </button>
             </div>
           </aside>
         </div>
@@ -1091,7 +1116,7 @@ export default function ItemChatView({
               Item Verification
             </h2>
             <p className="mt-2 text-sm text-gray-500">
-              Answer these questions to help establish ownership.
+              Answer these questions to help establish ownership. Your answers will be sent to the finder for review.
             </p>
 
             <label className="mt-5 block text-sm font-semibold text-gray-700">
@@ -1142,25 +1167,20 @@ export default function ItemChatView({
               />
             </label>
 
-            <p className="mt-3 text-xs text-gray-500">
-              The answers are currently only held in this form. They are not
-              stored or independently reviewed by an administrator.
-            </p>
-
             <div className="mt-6 flex justify-end gap-3">
               <button
                 type="button"
                 onClick={() => setVerificationOpen(false)}
                 className="rounded-full border border-gray-200 px-5 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-50"
               >
-                Back
+                Cancel
               </button>
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className="rounded-full bg-rose-400 px-5 py-2 text-sm font-semibold text-white hover:bg-rose-500 disabled:opacity-50"
+                className="rounded-full bg-blue-600 px-5 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
               >
-                {isSubmitting ? "Saving..." : "Submit Answers"}
+                {isSubmitting ? "Sending..." : "Send Answers"}
               </button>
             </div>
           </form>
@@ -1178,10 +1198,12 @@ export default function ItemChatView({
               Confirm {confirmation}
             </h2>
             <p className="mt-3 text-sm leading-6 text-gray-600">
-              {confirmation === "Unverify"
-                ? "This records the action and removes the chat's verified status."
+              {confirmation === "Approve Verification"
+                ? "Are you sure you want to approve this user's verification? This will immediately unlock meetups."
+                : confirmation === "Unverify"
+                ? "This will remove the user's verified status and lock meetups again."
                 : confirmation === "Block"
-                ? "This records a block action. The backend must enforce blocking."
+                ? "This records a block action and deletes the chat completely."
                 : "This records a report for review. Administrator notifications are not configured here."}
             </p>
 

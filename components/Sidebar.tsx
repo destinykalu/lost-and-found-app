@@ -27,18 +27,15 @@ export default function Sidebar() {
         <ul>
           <SidebarLink Icon={HomeIcon} text="Home" href="/homepage"/>
           <SidebarLink Icon={HashtagIcon} text="Create Post" href="/newPost"/>
-          <SidebarLink Icon={BellIcon} text="Notifications" href="/newPost"/>
+          <SidebarLink Icon={BellIcon} text="Notifications" href="/notifications"/>
           <SidebarLink
             Icon={ChatBubbleBottomCenterTextIcon}
             text="Chat"
             href="/chat"
           />
-          <SidebarLink Icon={UserIcon} text="My Profile" href="/newPost"/>
-          
+          <SidebarLink Icon={UserIcon} text="My Profile" href="/profile"/>
         </ul>
 
-
-       
       <div className="absolute bottom-0 left-0 w-full p-4 text-center">
         <button
           onClick={() => router.push("/")}
