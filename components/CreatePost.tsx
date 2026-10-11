@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import CampusSelector from "./CampusSelector";
 
@@ -17,10 +17,20 @@ export default function CreatePost() {
     const [error, setError] = useState("");
     const [success, setSuccess] = useState("");
 
+    useEffect(() => {
+        const savedCampus = localStorage.getItem("foundu-campus");
+
+        if (savedCampus) {
+            setSelectedCampus(savedCampus);
+        }
+    }, []);
+
     const inputClass =
         "w-full rounded-xl border border-gray-300 bg-white p-3 text-gray-900 shadow-sm outline-none transition placeholder:text-gray-400 focus:border-pink-500 focus:ring-2 focus:ring-pink-200";
 
-    const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    const handleSubmit = async (
+        event: React.FormEvent<HTMLFormElement>
+    ) => {
         event.preventDefault();
 
         setError("");
@@ -34,6 +44,10 @@ export default function CreatePost() {
         try {
             const savedPosts = localStorage.getItem("foundu-posts");
             const existingPosts = savedPosts ? JSON.parse(savedPosts) : [];
+
+            if (!Array.isArray(existingPosts)) {
+                throw new Error("Saved posts are not in the expected format.");
+            }
 
             let imageData: string | undefined;
 
@@ -49,18 +63,21 @@ export default function CreatePost() {
                         }
                     };
 
-                    reader.onerror = () => reject(new Error("Unable to read image."));
+                    reader.onerror = () =>
+                        reject(new Error("Unable to read image."));
+
                     reader.readAsDataURL(image);
                 });
             }
 
             const postToSave = {
                 id: crypto.randomUUID(),
+                campus: selectedCampus,
                 campus_id: selectedCampus,
                 type,
-                title,
-                description,
-                location,
+                title: title.trim(),
+                description: description.trim(),
+                location: location.trim(),
                 image_data: imageData,
                 date_recorded: dateLostFound,
                 status: "active",
@@ -68,25 +85,22 @@ export default function CreatePost() {
                 created_at: new Date().toISOString(),
             };
 
+            const updatedPosts = [postToSave, ...existingPosts];
+
             localStorage.setItem(
                 "foundu-posts",
-                JSON.stringify([postToSave, ...existingPosts])
+                JSON.stringify(updatedPosts)
             );
+
+            localStorage.setItem("foundu-campus", selectedCampus);
 
             setSuccess("Your post was created successfully!");
 
-            setTitle("");
-            setDescription("");
-            setLocation("");
-            setType("lost");
-            setSelectedCampus("");
-            setDateLostFound("");
-            setImage(null);
+            // Redirect only after the post has been saved.
+            router.push("/homepage");
+        } catch (error) {
+            console.error("Unable to save post:", error);
 
-            setTimeout(() => {
-                router.push("/");
-            }, 1000);
-        } catch {
             setError(
                 "Unable to save your post. Your image may be too large. Try a smaller image."
             );
@@ -108,8 +122,8 @@ export default function CreatePost() {
             </div>
 
             {/* Original pink and red container */}
-            <div className="mx-auto flex w-full max-w-3xl flex-col items-center rounded-xl bg-[#ff1fa9] p-3 shadow-xl sm:p-5">
-                <div className="h-full w-full rounded-xl bg-[#ff914d] p-4 shadow-inner sm:p-6">
+            <div className="mx-auto flex w-full max-w-3xl flex-col items-center rounded-xl bg-[#f972a4] p-3 shadow-xl sm:p-5">
+                <div className="h-full w-full rounded-xl bg-[#f99e66] p-4 shadow-inner sm:p-6">
                     <form
                         onSubmit={handleSubmit}
                         className="w-full min-w-0 space-y-6 rounded-xl bg-white p-5 shadow-lg sm:p-6"
@@ -127,7 +141,9 @@ export default function CreatePost() {
                                 id="title"
                                 type="text"
                                 value={title}
-                                onChange={(event) => setTitle(event.target.value)}
+                                onChange={(event) =>
+                                    setTitle(event.target.value)
+                                }
                                 placeholder="e.g. Black backpack"
                                 className={inputClass}
                                 required
@@ -266,6 +282,7 @@ export default function CreatePost() {
                                             event.target.files?.[0] ?? null
                                         )
                                     }
+                                    required
                                     className="w-full min-w-0 rounded-xl border border-gray-300 bg-white p-3 text-sm text-gray-700 shadow-sm file:mr-2 file:rounded-lg file:border-0 file:bg-pink-100 file:px-3 file:py-2 file:font-semibold file:text-pink-700 hover:file:bg-pink-200"
                                 />
 
@@ -320,7 +337,7 @@ export default function CreatePost() {
                         {/* Submit button */}
                         <button
                             type="submit"
-                            className="w-full rounded-xl bg-[#ff914d] px-4 py-3 font-semibold text-white shadow-md transition hover:bg-orange-600 hover:shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2 active:scale-[0.99]"
+                            className="w-full rounded-xl bg-[#f99e66] px-4 py-3 font-semibold text-white shadow-md transition hover:bg-orange-600 hover:shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2 active:scale-[0.99]"
                         >
                             Publish Post
                         </button>
