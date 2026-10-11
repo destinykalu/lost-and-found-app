@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
@@ -77,7 +76,7 @@ function mapMeetup(
   row: DbMeetup,
   currentUserId: string
 ): MeetupProposal {
-  const status = row.approval_status.toLowerCase();
+  const status = (row.approval_status || "proposed").toLowerCase();
 
   return {
     id: row.id,
@@ -86,7 +85,7 @@ function mapMeetup(
     proposedBy: row.proposed_by_id === currentUserId ? "me" : "them",
     status:
       status === "approved" || status === "denied"
-        ? status
+        ? (status as "approved" | "denied")
         : "proposed",
     itemReceived: row.item_received,
     searchAttempts: row.search_attempts ?? 0,
@@ -263,14 +262,15 @@ console.log("Final chatId:", chatId);
           loadMessages(chatRecord.id, user.id),
           loadMeetup(chatRecord.id, user.id),
         ]);
-      } catch (loadError) {
-        console.error("Could not load chat:", loadError);
+      } catch (loadError: any) {
+        console.error("Could not load chat - Full error:", loadError);
+        console.error("Detailed JSON:", JSON.stringify(loadError, null, 2));
 
         if (!cancelled) {
           setError(
-            loadError instanceof Error
-              ? loadError.message
-              : "Could not load this conversation."
+            loadError?.message ||
+            (typeof loadError === "object" && loadError !== null ? JSON.stringify(loadError) : null) ||
+            "Could not load this conversation."
           );
         }
       } finally {
@@ -391,12 +391,14 @@ console.log("Final chatId:", chatId);
       });
 
       setDraft("");
-    } catch (sendError) {
-      console.error("Could not send message:", sendError);
+    } catch (sendError: any) {
+      console.error("Could not send message - Full error:", sendError);
+      console.error("Detailed JSON:", JSON.stringify(sendError, null, 2));
+
       setError(
-        sendError instanceof Error
-          ? sendError.message
-          : "Could not send your message."
+        sendError?.message ||
+        (typeof sendError === "object" && sendError !== null ? JSON.stringify(sendError) : null) ||
+        "Could not send your message."
       );
     } finally {
       setIsSubmitting(false);
