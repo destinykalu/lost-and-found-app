@@ -58,20 +58,32 @@ export default function PostFeed() {
       }));
 
       setPosts(postsWithCampus);
-    } catch (err) {
-      console.error("Could not load posts:", err);
+   } catch (err) {
+  console.error("Full posts loading error:", err);
 
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Could not load posts. Please try again."
-      );
+  if (err instanceof Error) {
+    console.error("Error name:", err.name);
+    console.error("Error message:", err.message);
+    console.error("Error stack:", err.stack);
+  } else {
+    console.error("Error as string:", String(err));
+    console.error(
+      "Error properties:",
+      Object.getOwnPropertyNames(err as object)
+    );
+  }
 
-      setPosts([]);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  setError(
+    err instanceof Error
+      ? err.message
+      : "Could not load posts. Please try again."
+  );
+
+  setPosts([]);
+} finally {
+  setLoading(false);
+}
+  },[]);
 
   useEffect(() => {
     const savedCampus = localStorage.getItem("foundu-campus");
