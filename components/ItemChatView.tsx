@@ -101,6 +101,9 @@ export default function ItemChatView({
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const chatId = chatIdProp || String(params?.id ?? "");
+  console.log("chatIdProp:", chatIdProp);
+console.log("params.id:", params?.id);
+console.log("Final chatId:", chatId);
 
   const [post, setPost] = useState<Item | null>(null);
   const [loaded, setLoaded] = useState(false);

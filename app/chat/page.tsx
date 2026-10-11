@@ -3,52 +3,73 @@
 import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Sidebar from "@/components/Sidebar";
+import { supabase } from "@/lib/supabase";
 
-interface SavedPost {
-  id: string | number;
-  title?: string;
-  description?: string;
-  user_name?: string;
-  image_data?: string;
-  type?: string;
-}
-
-interface SavedChat {
-  postId: string;
+interface ChatItem {
+  id: string;
+  item_id: string;
+  finder_id: string;
+  claimant_id: string;
+  status: string;
+  item: {
+    title: string;
+    description: string | null;
+    image_url: string | null;
+    type: string;
+  } | null;
 }
 
 export default function ChatListPage() {
   const router = useRouter();
-  const [chats, setChats] = useState<SavedPost[]>([]);
+  const [chats, setChats] = useState<ChatItem[]>([]);
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
-    try {
-      const savedChats = localStorage.getItem("foundu-chats");
-      const savedPosts = localStorage.getItem("foundu-posts");
+    async function loadChats() {
+      try {
+        const {
+          data: { user },
+          error: authError,
+        } = await supabase.auth.getUser();
 
-      const chatList: SavedChat[] = savedChats
-        ? JSON.parse(savedChats)
-        : [];
+        if (authError) throw authError;
 
-      const posts: SavedPost[] = savedPosts
-        ? JSON.parse(savedPosts)
-        : [];
+        if (!user) {
+          router.replace("/login");
+          return;
+        }
 
-      const conversations = chatList
-        .map((chat) =>
-          posts.find((post) => String(post.id) === String(chat.postId))
-        )
-        .filter((post): post is SavedPost => post !== undefined);
+        const { data, error } = await supabase
+          .from("chats")
+          .select(`
+            id,
+            item_id,
+            finder_id,
+            claimant_id,
+            status,
+            item:items (
+              title,
+              description,
+              image_url,
+              type
+            )
+          `)
+          .or(`finder_id.eq.${user.id},claimant_id.eq.${user.id}`)
+          .order("created_at", { ascending: false });
 
-      setChats(conversations);
-    } catch (error) {
-      console.error("Could not load chats:", error);
-      setChats([]);
-    } finally {
-      setLoaded(true);
+        if (error) throw error;
+
+        setChats((data ?? []) as unknown as ChatItem[]);
+      } catch (error) {
+        console.error("Could not load chats:", error);
+        setChats([]);
+      } finally {
+        setLoaded(true);
+      }
     }
-  }, []);
+
+    loadChats();
+  }, [router]);
 
   return (
     <div className="flex min-h-screen bg-orange-50">
@@ -88,17 +109,17 @@ export default function ChatListPage() {
             </div>
           ) : (
             <div className="grid gap-3">
-              {chats.map((post) => (
+              {chats.map((chat) => (
                 <button
-                  key={String(post.id)}
+                  key={chat.id}
                   type="button"
-                  onClick={() => router.push(`/chat/${post.id}`)}
+                  onClick={() => router.push(`/chat/${chat.id}`)}
                   className="flex w-full items-center gap-4 rounded-xl border border-gray-200 bg-white p-4 text-left shadow-sm transition hover:border-orange-300 hover:shadow-md"
                 >
-                  {post.image_data ? (
+                  {chat.item?.image_url ? (
                     <img
-                      src={post.image_data}
-                      alt={post.title || "Item"}
+                      src={chat.item.image_url}
+                      alt={chat.item.title || "Item"}
                       className="h-16 w-16 shrink-0 rounded-lg border border-gray-200 object-contain"
                     />
                   ) : (
@@ -109,15 +130,15 @@ export default function ChatListPage() {
 
                   <div className="min-w-0 flex-1">
                     <h2 className="truncate font-bold text-gray-900">
-                      {post.title || "Untitled item"}
+                      {chat.item?.title || "Untitled item"}
                     </h2>
 
                     <p className="mt-1 truncate text-sm text-gray-600">
-                      Chat with {post.user_name || "poster"}
+                      {chat.item?.description || "Open to view your conversation"}
                     </p>
 
                     <p className="mt-1 text-xs capitalize text-orange-700">
-                      {post.type || "Lost or found item"}
+                      {chat.item?.type || "Lost or found item"}
                     </p>
                   </div>
 
