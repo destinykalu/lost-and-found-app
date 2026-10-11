@@ -76,7 +76,7 @@ function mapMeetup(
   row: DbMeetup,
   currentUserId: string
 ): MeetupProposal {
-  const status = (row.approval_status || "proposed").toLowerCase();
+  const status = (row.approval_status || "pending").toLowerCase();
 
   return {
     id: row.id,
@@ -100,9 +100,6 @@ export default function ItemChatView({
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const chatId = chatIdProp || String(params?.id ?? "");
-  console.log("chatIdProp:", chatIdProp);
-console.log("params.id:", params?.id);
-console.log("Final chatId:", chatId);
 
   const [post, setPost] = useState<Item | null>(null);
   const [loaded, setLoaded] = useState(false);
@@ -186,7 +183,6 @@ console.log("Final chatId:", chatId);
     []
   );
 
-  // The URL identifies a chat. Fetch the chat first, then its item.
   useEffect(() => {
     let cancelled = false;
 
@@ -290,7 +286,6 @@ console.log("Final chatId:", chatId);
     };
   }, [chatId, router, loadMessages, loadMeetup]);
 
-  // Subscribe to new messages and chat verification changes.
   useEffect(() => {
     if (!chat?.id || !currentUserId) return;
 
@@ -373,7 +368,6 @@ console.log("Final chatId:", chatId);
 
       const row = data as DbMessage;
 
-      // Add immediately; the realtime handler ignores duplicate IDs.
       setMessages((current) => {
         if (current.some((message) => message.id === row.id)) {
           return current;
@@ -570,7 +564,7 @@ console.log("Final chatId:", chatId);
       const latest = existingRows?.[0];
 
       if (
-        latest?.approval_status?.toLowerCase() === "proposed" &&
+        latest?.approval_status?.toLowerCase() === "pending" &&
         latest.proposed_by_id === currentUserId
       ) {
         setError(
@@ -586,7 +580,7 @@ console.log("Final chatId:", chatId);
           proposed_by_id: currentUserId,
           scheduled_time: scheduledDate.toISOString(),
           location: meetupLocation.trim(),
-          approval_status: "proposed",
+          approval_status: "pending", 
           item_received: null,
           search_attempts: searchAttempts,
         })
@@ -600,12 +594,14 @@ console.log("Final chatId:", chatId);
       setMeetup(mapMeetup(data as DbMeetup, currentUserId));
       setMeetupOpen(false);
       setNotice("Meetup proposal saved.");
-    } catch (meetupError) {
-      console.error("Could not propose meetup:", meetupError);
+    } catch (meetupError: any) {
+      console.error("Real Error:", JSON.stringify(meetupError, null, 2));
+
       setError(
-        meetupError instanceof Error
-          ? meetupError.message
-          : "Could not save the meetup proposal."
+        meetupError?.message ||
+        (typeof meetupError === "object" && meetupError !== null 
+          ? JSON.stringify(meetupError) 
+          : "Could not save the meetup proposal.")
       );
     } finally {
       setIsSubmitting(false);
