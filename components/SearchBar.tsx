@@ -13,12 +13,12 @@ export default function SearchBar({
 }: SearchBarProps) {
   return (
     <div className='w-full'>
-        <h1>Find Your Item</h1>
+        <h1 className=' text-pink-600 font-bold'>We're Finders not Keepers</h1>
         <input type='search'
         value={query}
         onChange={(event) => onQueryChange(event.target.value)}
         placeholder='Search items, locations, descriptions' 
-        className='w-full border-1 rounded-2xl p-1 border-gray-300'/>
+        className='w-full border rounded-2xl p-1 border-gray-300'/>
 
         {query && (
         <button type='button' onClick={() => onQueryChange("")}>

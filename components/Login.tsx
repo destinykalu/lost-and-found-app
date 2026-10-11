@@ -22,13 +22,14 @@ export default function Login() {
             <div className="flex w-full flex-col items-center rounded-xl bg-white px-4 py-6 sm:px-8 sm:py-8">
 
             {/* Logo */}
-            <div className="mb-6 flex w-full justify-center sm:mb-8">
-                <img
-                src="/images/logo.png"
-                alt="FoundU logo"
-                className="h-auto w-full max-w-[450px] object-contain"
-                />
-            </div>
+                <div className="mb-6 flex flex-col w-full justify-center sm:mb-8">
+                    <img
+                    src="/images/logo.png"
+                    alt="FoundU logo"
+                    className="h-auto w-full max-w-[450px] object-contain"
+                    />
+                    <h1 className=' text-pink-600  font-bold text-center'>We're Finders not Keepers</h1>
+                </div>
 
             {/* Name and college fields */}
             <div className="flex w-full max-w-sm flex-col items-center gap-4">

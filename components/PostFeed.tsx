@@ -186,14 +186,25 @@ export default function PostFeed() {
 
       router.push(`/chat/${newChat.id}`);
     } catch (err) {
-      console.error("Could not open chat:", err);
+  const details =
+    err && typeof err === "object"
+      ? Object.fromEntries(
+          Object.getOwnPropertyNames(err).map((key) => [
+            key,
+            (err as Record<string, unknown>)[key],
+          ])
+        )
+      : { message: String(err) };
 
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Could not open the conversation. Please try again."
-      );
-    }
+  console.error("Could not open chat — details:", details);
+
+  const message =
+    typeof details.message === "string"
+      ? details.message
+      : "Could not open the conversation. Check the browser console for details.";
+
+  setError(message);
+}
   };
 
   // Search titles, descriptions, locations, and selected campus.
@@ -216,7 +227,7 @@ export default function PostFeed() {
     <div className="min-h-screen flex-grow bg-orange-50 px-4 py-6 sm:px-6">
       <div className="mx-auto max-w-4xl">
         <div className="mb-6 flex flex-col gap-4">
-          <h1 className="text-3xl font-extrabold text-gray-900">
+          <h1 className="text-3xl font-extrabold text-[#f99e66]">
             FoundU
           </h1>
 

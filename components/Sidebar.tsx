@@ -2,6 +2,7 @@
 import React from 'react'
 import Image from "next/image";
 import { usePathname } from 'next/navigation';
+import { useRouter } from "next/navigation";
 
 import {
   HomeIcon,
@@ -15,6 +16,7 @@ import Link from 'next/link';
 
 export default function Sidebar() {
   const pathname = usePathname();
+  const router = useRouter();
 
   return (
     <nav className='sticky top-0 flex h-screen w-16 shrink-0 flex-col p-2 sm:w-56 sm:p-3 bg-[#f99e66] text-white font-bold'>
@@ -32,11 +34,20 @@ export default function Sidebar() {
             href="/chat"
           />
           <SidebarLink Icon={UserIcon} text="My Profile" href="/newPost"/>
+          
         </ul>
 
-        <div className='absolute bottom-0'>
-          User Info
-        </div>
+
+       
+      <div className="absolute bottom-0 left-0 w-full p-4 text-center">
+        <button
+          onClick={() => router.push("/")}
+          className="font-semibold text-pink-600 hover:text-pink-700 bg-white p-3 rounded-2xl"
+        >
+          Switch User
+        </button>
+      </div>
+
       </div>
     </nav>
   )
