@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
@@ -388,12 +387,14 @@ export default function ItemChatView({
       });
 
       setDraft("");
-    } catch (sendError) {
-      console.error("Could not send message:", sendError);
+    } catch (sendError: any) {
+      console.error("Could not send message - Full error:", sendError);
+      console.error("Detailed JSON:", JSON.stringify(sendError, null, 2));
+
       setError(
-        sendError instanceof Error
-          ? sendError.message
-          : "Could not send your message."
+        sendError?.message ||
+        (typeof sendError === "object" && sendError !== null ? JSON.stringify(sendError) : null) ||
+        "Could not send your message."
       );
     } finally {
       setIsSubmitting(false);

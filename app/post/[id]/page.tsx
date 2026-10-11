@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { useCallback, useEffect, useState } from "react";
@@ -124,13 +123,11 @@ export default function FullItemPage() {
             chat.claimant_id === user.id)
       );
 
-      if (existingChat) {
+      if (existingChat?.id) {
         router.push(`/chat/${existingChat.id}`);
         return;
       }
 
-      // For a found item, its owner is the finder.
-      // For a lost item, its owner is the claimant.
       const finderId =
         item.type === "found" ? item.user_id : user.id;
 
@@ -144,7 +141,7 @@ export default function FullItemPage() {
             item_id: item.id,
             finder_id: finderId,
             claimant_id: claimantId,
-            status: "active",
+            status: "open", // Changed to match your database check constraint
             is_verified: false,
           })
           .select("id")
@@ -154,15 +151,21 @@ export default function FullItemPage() {
         throw createChatError;
       }
 
-      router.push(`/chat/${newChat.id}`);
-    } catch (err) {
-      console.error("Could not open chat:", err);
+      if (!newChat?.id) {
+        throw new Error("Chat was created, but no ID was returned.");
+      }
 
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Could not open the conversation. Please try again."
-      );
+      router.push(`/chat/${newChat.id}`);
+    } catch (err: any) {
+      console.error("Could not open chat - Full error:", err);
+      console.error("Detailed JSON:", JSON.stringify(err, null, 2));
+
+      const errorMessage =
+        err?.message ||
+        (typeof err === "object" && err !== null ? JSON.stringify(err) : null) ||
+        "Could not open the conversation. Please try again.";
+
+      setError(errorMessage);
     } finally {
       setIsOpeningChat(false);
     }
