@@ -1,47 +1,90 @@
+
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
 import SearchBar from "./SearchBar";
-import type { Item } from "../types/Items";
 import { useRouter } from "next/navigation";
 import CampusSelector from "./CampusSelector";
+import { supabase } from "../lib/supabase";
 
-type CampusItem = Item & {
+type FeedPost = {
+  id: string;
+  campus_id: string;
+  type: "lost" | "found";
+  title: string;
+  description: string | null;
+  location: string;
+  date_recorded: string;
+  image_url: string | null;
+  status: string;
+  user_id: string;
+  created_at: string;
   campus?: string;
-  campus_id?: string;
+  user_name?: string;
+  campuses?: { name: string } | null;
 };
 
 export default function PostFeed() {
   const [query, setQuery] = useState("");
   const [selectedCampus, setSelectedCampus] = useState("");
-  const [posts, setPosts] = useState<Item[]>([]);
+  const [posts, setPosts] = useState<FeedPost[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
   const router = useRouter();
 
-  const loadPosts = useCallback(() => {
-    try {
-      const savedPosts = localStorage.getItem("foundu-posts");
+  // Load posts directly from Supabase.
+  const loadPosts = useCallback(async () => {
+    setLoading(true);
+    setError("");
 
-      if (savedPosts) {
-        const parsedPosts: Item[] = JSON.parse(savedPosts);
-        setPosts(Array.isArray(parsedPosts) ? parsedPosts : []);
-      } else {
-        setPosts([]);
+    try {
+      const { data, error: fetchError } = await supabase
+        .from("items")
+        .select("*, campuses(name)")
+        .eq("status", "active")
+        .order("created_at", { ascending: false });
+
+      if (fetchError) {
+        throw fetchError;
       }
-    } catch (error) {
-      console.error("Could not load saved posts:", error);
+
+      const rows = (data ?? []) as unknown as FeedPost[];
+
+      // Use the image_url stored in the database directly.
+      const postsWithCampus = rows.map((post) => ({
+        ...post,
+        campus: post.campuses?.name ?? "",
+      }));
+
+      setPosts(postsWithCampus);
+    } catch (err) {
+      console.error("Could not load posts:", err);
+
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Could not load posts. Please try again."
+      );
+
       setPosts([]);
+    } finally {
+      setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    loadPosts();
-
     const savedCampus = localStorage.getItem("foundu-campus");
+
     if (savedCampus) {
       setSelectedCampus(savedCampus);
     }
 
-    const handlePageShow = () => loadPosts();
+    void loadPosts();
+
+    const handlePageShow = () => {
+      void loadPosts();
+    };
 
     window.addEventListener("pageshow", handlePageShow);
     window.addEventListener("focus", handlePageShow);
@@ -52,42 +95,107 @@ export default function PostFeed() {
     };
   }, [loadPosts]);
 
-  // Save the conversation and open the correct chat.
-  const openChat = (item: CampusItem) => {
-    const postId = String(item.id);
+  // Keep the selected campus preference.
+  const handleCampusChange = (campus: string) => {
+    setSelectedCampus(campus);
 
-    try {
-      const savedChats = localStorage.getItem("foundu-chats");
-      const chats: { postId: string }[] = savedChats
-        ? JSON.parse(savedChats)
-        : [];
-
-      // Add this chat only if it does not already exist.
-      if (!chats.some((chat) => String(chat.postId) === postId)) {
-        chats.unshift({ postId });
-        localStorage.setItem("foundu-chats", JSON.stringify(chats));
-      }
-    } catch (error) {
-      console.error("Could not save chat:", error);
+    if (campus) {
+      localStorage.setItem("foundu-campus", campus);
+    } else {
+      localStorage.removeItem("foundu-campus");
     }
-
-    // Matches app/chat/[id]/page.tsx
-    router.push(`/chat/${postId}`);
   };
 
+  // Open or create a conversation in Supabase.
+  const openChat = async (item: FeedPost) => {
+    try {
+      setError("");
+
+      const {
+        data: { user },
+        error: authError,
+      } = await supabase.auth.getUser();
+
+      if (authError || !user) {
+        router.push("/login");
+        return;
+      }
+
+      if (user.id === item.user_id) {
+        setError("You cannot message yourself about your own post.");
+        return;
+      }
+
+      const { data: existingChats, error: chatFetchError } =
+        await supabase
+          .from("chats")
+          .select("id, finder_id, claimant_id")
+          .eq("item_id", item.id);
+
+      if (chatFetchError) {
+        throw chatFetchError;
+      }
+
+      const existingChat = (existingChats ?? []).find(
+        (chat) =>
+          (chat.finder_id === user.id &&
+            chat.claimant_id === item.user_id) ||
+          (chat.finder_id === item.user_id &&
+            chat.claimant_id === user.id)
+      );
+
+      if (existingChat) {
+        router.push(`/chat/${existingChat.id}`);
+        return;
+      }
+
+      const finderId =
+        item.type === "found" ? item.user_id : user.id;
+
+      const claimantId =
+        item.type === "found" ? user.id : item.user_id;
+
+      const { data: newChat, error: createChatError } =
+        await supabase
+          .from("chats")
+          .insert({
+            item_id: item.id,
+            finder_id: finderId,
+            claimant_id: claimantId,
+            status: "active",
+            is_verified: false,
+          })
+          .select("id")
+          .single();
+
+      if (createChatError) {
+        throw createChatError;
+      }
+
+      router.push(`/chat/${newChat.id}`);
+    } catch (err) {
+      console.error("Could not open chat:", err);
+
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Could not open the conversation. Please try again."
+      );
+    }
+  };
+
+  // Search titles, descriptions, locations, and selected campus.
   const filteredPosts = posts.filter((post) => {
-    const item = post as CampusItem;
-
     const searchText =
-      `${item.title ?? ""} ${item.description ?? ""} ${item.location ?? ""}`.toLowerCase();
+      `${post.title ?? ""} ${post.description ?? ""} ${post.location ?? ""}`
+        .toLowerCase();
 
-    const matchesSearch = searchText.includes(query.trim().toLowerCase());
-
-    // Support both campus field names.
-    const postCampus = item.campus ?? item.campus_id ?? "";
+    const matchesSearch = searchText.includes(
+      query.trim().toLowerCase()
+    );
 
     const matchesCampus =
-      selectedCampus === "" || postCampus === selectedCampus;
+      selectedCampus === "" || post.campus === selectedCampus;
 
     return matchesSearch && matchesCampus;
   });
@@ -107,7 +215,9 @@ export default function PostFeed() {
             />
 
             <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-md">
-              <CampusSelector onCampusChange={setSelectedCampus} />
+              <CampusSelector
+                onCampusChange={handleCampusChange}
+              />
             </div>
           </div>
         </div>
@@ -122,12 +232,34 @@ export default function PostFeed() {
           </button>
         </div>
 
+        {error && (
+          <div
+            role="alert"
+            className="mb-5 rounded-xl border border-red-200 bg-white p-4 text-sm text-red-700"
+          >
+            {error}
+
+            <button
+              type="button"
+              onClick={() => void loadPosts()}
+              className="ml-2 font-semibold underline"
+            >
+              Try again
+            </button>
+          </div>
+        )}
+
         <div className="mt-6 grid gap-4">
-          {posts.length === 0 ? (
+          {loading ? (
+            <div className="rounded-xl border border-gray-200 bg-white p-8 text-center shadow-sm">
+              <p className="text-gray-600">Loading posts...</p>
+            </div>
+          ) : posts.length === 0 ? (
             <div className="rounded-xl border border-gray-200 bg-white p-8 text-center shadow-sm">
               <h2 className="text-lg font-semibold text-gray-800">
                 No posts yet
               </h2>
+
               <p className="mt-2 text-sm text-gray-500">
                 Be the first to share a lost or found item!
               </p>
@@ -137,106 +269,101 @@ export default function PostFeed() {
               <h2 className="text-lg font-semibold text-gray-800">
                 No matching posts
               </h2>
+
               <p className="mt-2 text-sm text-gray-500">
-                Try another search or campus. Posts must have a matching campus saved to appear under a specific school.
+                Try another search or campus.
               </p>
+
               <button
                 type="button"
-                onClick={() => {
-                  setSelectedCampus("");
-                  localStorage.removeItem("foundu-campus");
-                }}
+                onClick={() => handleCampusChange("")}
                 className="mt-4 rounded-full border border-orange-300 px-4 py-2 font-semibold text-orange-700 hover:bg-orange-50"
               >
                 Show All Campuses
               </button>
             </div>
           ) : (
-            filteredPosts.map((post) => {
-              const item = post as CampusItem;
+            filteredPosts.map((item) => (
+              <article
+                key={item.id}
+                className="rounded-xl border border-gray-200 bg-white p-5 shadow-md transition hover:shadow-lg"
+              >
+                {item.image_url && (
+                  <img
+                    src={item.image_url}
+                    alt={item.title || "Lost or found item"}
+                    className="mb-4 h-56 w-full rounded-xl border border-gray-200 object-contain shadow-sm"
+                  />
+                )}
 
-              return (
-                <article
-                  key={post.id}
-                  className="rounded-xl border border-gray-200 bg-white p-5 shadow-md transition hover:shadow-lg"
-                >
-                  {item.image_data && (
-                    <img
-                      src={item.image_data}
-                      alt={item.title || "Lost or found item"}
-                      className="mb-4 h-56 w-full rounded-xl border border-gray-200 object-contain shadow-sm"
-                    />
-                  )}
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <span
+                    className={`rounded-full px-3 py-1 text-xs font-bold uppercase ${
+                      item.type === "lost"
+                        ? "bg-pink-100 text-pink-700"
+                        : "bg-green-100 text-green-700"
+                    }`}
+                  >
+                    {item.type}
+                  </span>
 
-                  <div className="mb-3 flex items-center justify-between gap-3">
-                    <span
-                      className={`rounded-full px-3 py-1 text-xs font-bold uppercase ${
-                        item.type === "lost"
-                          ? "bg-pink-100 text-pink-700"
-                          : "bg-green-100 text-green-700"
-                      }`}
-                    >
-                      {item.type}
-                    </span>
+                  <span className="text-xs text-gray-500">
+                    {item.date_recorded}
+                  </span>
+                </div>
 
-                    <span className="text-xs text-gray-500">
-                      {item.date_recorded}
-                    </span>
-                  </div>
+                <h2 className="text-xl font-bold text-gray-900">
+                  {item.title || "Untitled item"}
+                </h2>
 
-                  <h2 className="text-xl font-bold text-gray-900">
-                    {item.title || "Untitled item"}
-                  </h2>
+                <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-gray-600">
+                  {item.description || "No description provided."}
+                </p>
 
-                  <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-gray-600">
-                    {item.description || "No description provided."}
+                <div className="mt-4 border-t border-gray-100 pt-3">
+                  <p className="text-sm text-gray-600">
+                    <span className="font-semibold text-gray-800">
+                      Location:
+                    </span>{" "}
+                    {item.location}
                   </p>
 
-                  <div className="mt-4 border-t border-gray-100 pt-3">
-                    <p className="text-sm text-gray-600">
-                      <span className="font-semibold text-gray-800">
-                        Location:
-                      </span>{" "}
-                      {item.location}
-                    </p>
+                  <p className="mt-1 text-sm text-gray-600">
+                    <span className="font-semibold text-gray-800">
+                      Posted by:
+                    </span>{" "}
+                    {item.user_name || "Community member"}
+                  </p>
 
+                  {item.campus && (
                     <p className="mt-1 text-sm text-gray-600">
                       <span className="font-semibold text-gray-800">
-                        Posted by:
+                        Campus:
                       </span>{" "}
-                      {item.user_name}
+                      {item.campus}
                     </p>
+                  )}
+                </div>
 
-                    {(item.campus || item.campus_id) && (
-                      <p className="mt-1 text-sm text-gray-600">
-                        <span className="font-semibold text-gray-800">
-                          Campus:
-                        </span>{" "}
-                        {item.campus || item.campus_id}
-                      </p>
-                    )}
-                  </div>
+                <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+                  <button
+                    type="button"
+                    onClick={() => router.push(`/post/${item.id}`)}
+                    className="flex-1 rounded-full border border-orange-300 px-4 py-2 font-semibold text-orange-700 transition hover:bg-orange-50"
+                  >
+                    View Full Item
+                  </button>
 
-                  <div className="mt-4 flex flex-col gap-2 sm:flex-row">
-                    <button
-                      type="button"
-                      onClick={() => router.push(`/post/${item.id}`)}
-                      className="flex-1 rounded-full border border-orange-300 px-4 py-2 font-semibold text-orange-700 transition hover:bg-orange-50"
-                    >
-                      View Full Item
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => openChat(item)}
-                      className="flex-1 rounded-full bg-[#f99e66] px-4 py-2 font-semibold text-white transition hover:bg-orange-600"
-                    >
-                      Message Poster
-                    </button>
-                  </div>
-                </article>
-              );
-            })
+                  <button
+                    type="button"
+                    onClick={() => void openChat(item)}
+                    className="flex-1 rounded-full bg-[#f99e66] px-4 py-2 font-semibold text-white transition hover:bg-orange-600"
+                  >
+                    Message Poster
+                  </button>
+                </div>
+              </article>
+            ))
           )}
         </div>
       </div>
